@@ -126,6 +126,14 @@ def dashboard():
         "total": total, "todo": todo, 
         "in_progress": in_progress, "done": done
     }), 200
+
+@app.route('/')
+def home():
+    # This reads your HTML file and displays it at your main URL
+    with open('frontend/index.html', 'r') as file:
+        return file.read()
+
+
 # Run locally
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
