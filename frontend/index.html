@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Team Task Manager</title>
+    <style>
+        /* A tiny bit of styling so your demo video looks presentable */
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        button { margin-top: 5px; cursor: pointer; }
+        input { padding: 5px; margin-right: 5px; }
+        li { margin-bottom: 10px; list-style-type: none; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; }
+        ul { padding-left: 0; }
+    </style>
+</head>
+<body>
+    <div id="auth-section">
+        <h2>Login / Signup</h2>
+        <p><i>Note: To test this locally or live, create an account using tools like Postman to hit the /api/signup route, or just create a quick DB entry.</i></p>
+        <input type="email" id="email" placeholder="Email">
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="login()">Login</button>
+    </div>
+
+    <div id="dashboard-section" style="display: none;">
+        <h2>Team Task Manager Dashboard</h2>
+        <div id="stats" style="padding: 15px; background: #e3f2fd; margin-bottom: 20px; border-radius: 5px;"></div>
+
+        <div style="display: flex; gap: 40px;">
+            <div style="flex: 1;">
+                <h3>Projects</h3>
+                <input type="text" id="new-project-name" placeholder="New Project Name">
+                <button onclick="createProject()">Create Project</button>
+                <ul id="project-list"></ul>
+            </div>
+            
+            <div style="flex: 1;">
+                <h3>Tasks <span id="current-project-label" style="color: gray; font-size: 0.8em;"></span></h3>
+                <input type="text" id="new-task-title" placeholder="New Task Title">
+                <button onclick="createTask()">Add Task</button>
+                <ul id="task-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Included https:// so the browser knows it is a secure web request
+        const API_URL = 'https://web-production-2b47b.up.railway.app/api'; 
+
+        // --- AUTHENTICATION ---
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            const response = await fetch(`${API_URL}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                localStorage.setItem('token', data.access_token);
+                // Trigger dashboard transition
+                showDashboard();
+            } else {
+                alert('Login failed. Check console or credentials.');
+            }
+        }
+
+        // --- DASHBOARD UI ---
+        let currentProjectId = null;
+
+        function showDashboard() {
+            document.getElementById('auth-section').style.display = 'none';
+            document.getElementById('dashboard-section').style.display = 'block';
+            loadDashboardStats();
+            loadProjects();
+        }
+
+        async function loadDashboardStats() {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/dashboard`, { headers: { 'Authorization': `Bearer ${token}` }});
+            const stats = await res.json();
+            document.getElementById('stats').innerHTML = `
+                Total Tasks: <b>${stats.total}</b> | 
+                To Do: <b>${stats.todo}</b> | 
+                In Progress: <b>${stats.in_progress}</b> | 
+                Done: <b>${stats.done}</b>
+            `;
+        }
+
+        // --- PROJECTS ---
+        async function createProject() {
+            const name = document.getElementById('new-project-name').value;
+            if (!name) return;
+            const token = localStorage.getItem('token');
+            await fetch(`${API_URL}/projects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ name })
+            });
+            document.getElementById('new-project-name').value = ''; // clear input
+            loadProjects();
+        }
+
+        async function loadProjects() {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/projects`, { headers: { 'Authorization': `Bearer ${token}` }});
+            const projects = await res.json();
+            const list = document.getElementById('project-list');
+            list.innerHTML = projects.map(p => `
+                <li>
+                    <strong>${p.name}</strong> <br>
+                    <button onclick="selectProject(${p.id}, '${p.name}')">View Tasks</button>
+                </li>`).join('');
+        }
+
+        function selectProject(id, name) {
+            currentProjectId = id;
+            document.getElementById('current-project-label').innerText = `(${name})`;
+            loadTasks();
+        }
+
+        // --- TASKS ---
+        async function createTask() {
+            if (!currentProjectId) return alert("Select a project first!");
+            const title = document.getElementById('new-task-title').value;
+            if (!title) return;
+            const token = localStorage.getItem('token');
+            await fetch(`${API_URL}/tasks`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ title: title, project_id: currentProjectId })
+            });
+            document.getElementById('new-task-title').value = ''; // clear input
+            loadTasks();
+            loadDashboardStats(); // Update stats
+        }
+
+        async function loadTasks() {
+            if (!currentProjectId) return;
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/tasks/${currentProjectId}`, { headers: { 'Authorization': `Bearer ${token}` }});
+            const tasks = await res.json();
+            const list = document.getElementById('task-list');
+            list.innerHTML = tasks.map(t => `
+                <li>
+                    ${t.title} - <b>[${t.status}]</b> <br>
+                    <button onclick="updateTaskStatus(${t.id}, 'In Progress')">Start</button>
+                    <button onclick="updateTaskStatus(${t.id}, 'Done')">Finish</button>
+                </li>`).join('');
+        }
+
+        async function updateTaskStatus(taskId, newStatus) {
+            const token = localStorage.getItem('token');
+            await fetch(`${API_URL}/tasks/${taskId}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ status: newStatus })
+            });
+            loadTasks();
+            loadDashboardStats();
+        }
+    </script>
+</body>
+</html>
